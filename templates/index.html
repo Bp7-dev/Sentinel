@@ -1,0 +1,2117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel - Network Security Monitor</title>
+    <!-- Favicon: Cyan Shield -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 5 L90 20 L90 50 C90 75 70 95 50 95 C30 95 10 75 10 50 L10 20 Z' fill='none' stroke='%2300d4ff' stroke-width='6'/%3E%3Ccircle cx='50' cy='45' r='12' fill='%2300d4ff'/%3E%3C/svg%3E">
+    <style>
+        /* =================================================================
+           CSS RESET & BASE
+           ================================================================= */
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #050508;
+            --bg-secondary: #0a0a0f;
+            --bg-card: #0d0d14;
+            --bg-card-hover: #12121a;
+            --accent: #00d4ff;
+            --accent-dim: #00a8cc;
+            --accent-glow: rgba(0, 212, 255, 0.15);
+            --text-primary: #e8e8e8;
+            --text-secondary: #888;
+            --text-dim: #555;
+            --border-color: #1a1a24;
+            --threat-high: #ff4757;
+            --threat-medium: #ffa502;
+            --threat-low: #2ed573;
+            --threat-none: #555;
+            --success: #2ed573;
+            --warning: #ffa502;
+            --error: #ff4757;
+            --font-mono: 'SF Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+        }
+
+        html {
+            font-size: 14px;
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-mono);
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.5;
+            /* Subtle grid background */
+            background-image: 
+                linear-gradient(rgba(0, 212, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 212, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            background-position: -1px -1px;
+        }
+
+        /* =================================================================
+           LAYOUT
+           ================================================================= */
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        /* =================================================================
+           HEADER
+           ================================================================= */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0 2rem;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 2rem;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            position: relative;
+        }
+
+        .logo-icon::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 30px;
+            border: 2px solid var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .logo-icon::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 10px;
+            height: 10px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 15px var(--accent);
+        }
+
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent);
+            text-shadow: 0 0 30px var(--accent-glow);
+        }
+
+        .logo .subtitle {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+        }
+
+        .header-status {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--success);
+            font-size: 0.8rem;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { 
+                opacity: 1; 
+                box-shadow: 0 0 5px var(--success), 0 0 10px var(--success); 
+                transform: scale(1);
+            }
+            50% { 
+                opacity: 0.6; 
+                box-shadow: 0 0 20px var(--success), 0 0 30px var(--success); 
+                transform: scale(1.2);
+            }
+        }
+
+        /* =================================================================
+           BOOT SEQUENCE
+           ================================================================= */
+        .boot-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-primary);
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+
+        .boot-overlay.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .boot-logo {
+            margin-bottom: 2rem;
+        }
+
+        .boot-logo svg {
+            width: 80px;
+            height: 80px;
+            filter: drop-shadow(0 0 20px var(--accent));
+        }
+
+        .boot-title {
+            font-size: 2rem;
+            letter-spacing: 0.3em;
+            color: var(--accent);
+            text-shadow: 0 0 30px var(--accent-glow);
+            margin-bottom: 2rem;
+        }
+
+        .boot-checks {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-align: left;
+        }
+
+        .boot-check {
+            margin: 0.5rem 0;
+            opacity: 0;
+            transform: translateX(-10px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .boot-check.visible {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .boot-check .check-status {
+            color: var(--success);
+            margin-right: 0.5rem;
+        }
+
+        /* =================================================================
+           CRT SCAN LINE EFFECT
+           ================================================================= */
+        .scanlines {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            overflow: hidden;
+        }
+
+        .scanlines::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent 0px,
+                rgba(0, 212, 255, 0.03) 1px,
+                transparent 2px,
+                transparent 4px
+            );
+            animation: scanline 8s linear infinite;
+        }
+
+        @keyframes scanline {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-50%); }
+        }
+
+        /* =================================================================
+           CARD ENTRANCE ANIMATIONS
+           ================================================================= */
+        .card, .stat-card, .threat-summary {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.5s ease, transform 0.5s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card.visible, .stat-card.visible, .threat-summary.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* =================================================================
+           THREAT FLASH ANIMATION
+           ================================================================= */
+        @keyframes threat-flash {
+            0%, 100% { background: rgba(255, 71, 87, 0.2); }
+            50% { background: rgba(255, 71, 87, 0.6); box-shadow: 0 0 20px rgba(255, 71, 87, 0.5); }
+        }
+
+        .threat-badge.high.flash {
+            animation: threat-flash 0.3s ease 3;
+        }
+
+        /* =================================================================
+           TYPEWRITER CURSOR
+           ================================================================= */
+        .typewriter-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background: var(--accent);
+            margin-left: 2px;
+            animation: blink 0.7s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        .timestamp {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        /* =================================================================
+           STATS BAR
+           ================================================================= */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .stat-card:hover::before {
+            opacity: 1;
+        }
+
+        .stat-card:hover {
+            border-color: var(--accent-dim);
+            box-shadow: 0 0 30px var(--accent-glow);
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .stat-value.accent {
+            color: var(--accent);
+        }
+
+        .stat-sub {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+
+        /* =================================================================
+           THREAT SUMMARY
+           ================================================================= */
+        .threat-summary {
+            display: flex;
+            gap: 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .threat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .threat-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 22px;
+            padding: 0 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .threat-badge.high {
+            background: rgba(255, 71, 87, 0.2);
+            color: var(--threat-high);
+            border: 1px solid var(--threat-high);
+        }
+
+        .threat-badge.medium {
+            background: rgba(255, 165, 2, 0.2);
+            color: var(--threat-medium);
+            border: 1px solid var(--threat-medium);
+        }
+
+        .threat-badge.low {
+            background: rgba(46, 213, 115, 0.2);
+            color: var(--threat-low);
+            border: 1px solid var(--threat-low);
+        }
+
+        .threat-badge.none {
+            background: rgba(85, 85, 85, 0.2);
+            color: var(--threat-none);
+            border: 1px solid var(--threat-none);
+        }
+
+        .threat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* =================================================================
+           GRID LAYOUT
+           ================================================================= */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(0, 212, 255, 0.3);
+            box-shadow: 0 0 40px var(--accent-glow);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+        }
+
+        .card-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+        }
+
+        .card-badge {
+            font-size: 0.7rem;
+            padding: 0.25rem 0.5rem;
+            background: var(--accent-glow);
+            border: 1px solid var(--accent-dim);
+            border-radius: 4px;
+            color: var(--accent);
+        }
+
+        .card-body {
+            padding: 1rem;
+        }
+
+        /* Span classes */
+        .span-12 { grid-column: span 12; }
+        .span-8 { grid-column: span 8; }
+        .span-6 { grid-column: span 6; }
+        .span-4 { grid-column: span 4; }
+        .span-3 { grid-column: span 3; }
+
+        @media (max-width: 1200px) {
+            .span-8, .span-6, .span-4, .span-3 {
+                grid-column: span 12;
+            }
+        }
+
+        /* =================================================================
+           TABLES
+           ================================================================= */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: 0.85rem 0.75rem;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 500;
+        }
+
+        .data-table td {
+            padding: 0.85rem 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            transition: background 0.2s ease;
+            vertical-align: middle;
+        }
+
+        .data-table tr:hover td {
+            background: var(--bg-card-hover);
+        }
+
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .table-scroll {
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .table-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .table-scroll::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        .table-scroll::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        .table-scroll::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-dim);
+        }
+
+        /* =================================================================
+           THREAT INDICATORS
+           ================================================================= */
+        .threat-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            cursor: help;
+            position: relative;
+        }
+
+        .threat-indicator.high {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--threat-high);
+        }
+
+        .threat-indicator.medium {
+            background: rgba(255, 165, 2, 0.15);
+            color: var(--threat-medium);
+        }
+
+        .threat-indicator.low {
+            background: rgba(46, 213, 115, 0.15);
+            color: var(--threat-low);
+        }
+
+        .threat-indicator.none {
+            color: var(--text-dim);
+            cursor: default;
+        }
+
+        .threat-indicator::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* Tooltip for threat reasons */
+        .threat-indicator[data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 400;
+            text-transform: none;
+            white-space: nowrap;
+            max-width: 300px;
+            white-space: normal;
+            z-index: 1000;
+            margin-bottom: 5px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* =================================================================
+           COUNTRY FLAG
+           ================================================================= */
+        .country-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .flag {
+            font-size: 1.1rem;
+            line-height: 1;
+        }
+
+        .country-code {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .country-name {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* =================================================================
+           TOP TALKERS
+           ================================================================= */
+        .top-talker-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s ease;
+        }
+
+        .top-talker-item:last-child {
+            border-bottom: none;
+        }
+
+        .top-talker-item:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .top-talker-rank {
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-glow);
+            border: 1px solid var(--accent-dim);
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-right: 0.75rem;
+        }
+
+        .top-talker-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .top-talker-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .top-talker-pid {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+
+        .top-talker-connections {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--accent);
+        }
+
+        /* =================================================================
+           THREAT LOG
+           ================================================================= */
+        .threat-log {
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .threat-log-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s ease;
+        }
+
+        .threat-log-item:last-child {
+            border-bottom: none;
+        }
+
+        .threat-log-item:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .threat-log-time {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            white-space: nowrap;
+            min-width: 60px;
+        }
+
+        .threat-log-level {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-top: 4px;
+            flex-shrink: 0;
+        }
+
+        .threat-log-level.high { background: var(--threat-high); }
+        .threat-log-level.medium { background: var(--threat-medium); }
+        .threat-log-level.low { background: var(--threat-low); }
+
+        .threat-log-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .threat-log-ip {
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 0.8rem;
+        }
+
+        .threat-log-reason {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .threat-log-process {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        /* =================================================================
+           SPARKLINES
+           ================================================================= */
+        .sparkline {
+            width: 60px;
+            height: 20px;
+            margin-left: 0.5rem;
+        }
+
+        .sparkline-path {
+            fill: none;
+            stroke: var(--accent);
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .sparkline-area {
+            fill: var(--accent-glow);
+        }
+
+        /* =================================================================
+           FIREWALL STATUS
+           ================================================================= */
+        .firewall-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-indicator.active {
+            background: rgba(46, 213, 115, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(46, 213, 115, 0.3);
+        }
+
+        .status-indicator.inactive {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--error);
+            border: 1px solid rgba(255, 71, 87, 0.3);
+        }
+
+        .status-indicator.unknown {
+            background: rgba(255, 165, 2, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(255, 165, 2, 0.3);
+        }
+
+        .firewall-rules {
+            list-style: none;
+            font-size: 0.75rem;
+        }
+
+        .firewall-rules li {
+            padding: 0.4rem 0.5rem;
+            border-left: 2px solid var(--border-color);
+            margin-bottom: 0.25rem;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+        }
+
+        .firewall-rules li:hover {
+            border-left-color: var(--accent);
+            background: var(--bg-card-hover);
+            color: var(--text-primary);
+        }
+
+        /* =================================================================
+           INTERFACES
+           ================================================================= */
+        .interface-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s ease;
+        }
+
+        .interface-item:last-child {
+            border-bottom: none;
+        }
+
+        .interface-item:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .interface-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .interface-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .interface-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .interface-status.up {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .interface-status.down {
+            background: var(--text-dim);
+        }
+
+        .interface-ips {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+
+        .interface-stats {
+            text-align: right;
+            font-size: 0.75rem;
+        }
+
+        .stat-rx {
+            color: var(--success);
+        }
+
+        .stat-tx {
+            color: var(--accent);
+        }
+
+        /* =================================================================
+           GRAPH
+           ================================================================= */
+        .graph-container {
+            width: 100%;
+            height: 200px;
+            position: relative;
+        }
+
+        .graph-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .graph-label {
+            position: absolute;
+            font-size: 0.65rem;
+            color: var(--text-dim);
+        }
+
+        /* =================================================================
+           SYSTEM INFO
+           ================================================================= */
+        .system-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        .system-item {
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+        }
+
+        .system-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .system-value {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        /* =================================================================
+           USAGE BARS
+           ================================================================= */
+        .usage-bar-container {
+            margin-top: 0.5rem;
+        }
+
+        .usage-bar-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .usage-bar {
+            height: 6px;
+            background: var(--bg-secondary);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .usage-bar-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        .usage-bar-fill.warning {
+            background: var(--warning);
+            box-shadow: 0 0 10px rgba(255, 165, 2, 0.3);
+        }
+
+        .usage-bar-fill.danger {
+            background: var(--error);
+            box-shadow: 0 0 10px rgba(255, 71, 87, 0.3);
+        }
+
+        /* =================================================================
+           EMPTY STATE
+           ================================================================= */
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-dim);
+        }
+
+        .empty-state-icon {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+            opacity: 0.5;
+        }
+
+        /* =================================================================
+           LOADING & TRANSITIONS
+           ================================================================= */
+        .loading {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .data-update {
+            animation: dataUpdate 0.5s ease;
+        }
+
+        @keyframes dataUpdate {
+            0% { background: var(--accent-glow); }
+            100% { background: transparent; }
+        }
+
+        /* =================================================================
+           FOOTER
+           ================================================================= */
+        footer {
+            text-align: center;
+            padding: 2rem 0;
+            margin-top: 2rem;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-dim);
+            font-size: 0.75rem;
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* =================================================================
+           ERROR BANNER
+           ================================================================= */
+        .error-banner {
+            background: rgba(255, 71, 87, 0.1);
+            border: 1px solid var(--error);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            display: none;
+        }
+
+        .error-banner.visible {
+            display: block;
+        }
+
+        .error-banner-text {
+            color: var(--error);
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- CRT Scan Line Effect -->
+    <div class="scanlines"></div>
+
+    <!-- Boot Sequence Overlay -->
+    <div class="boot-overlay" id="bootOverlay">
+        <div class="boot-logo">
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <path d="M50 5 L90 20 L90 50 C90 75 70 95 50 95 C30 95 10 75 10 50 L10 20 Z" fill="none" stroke="#00d4ff" stroke-width="4"/>
+                <circle cx="50" cy="45" r="10" fill="#00d4ff"/>
+            </svg>
+        </div>
+        <div class="boot-title" id="bootTitle"></div>
+        <div class="boot-checks">
+            <div class="boot-check" data-index="0"><span class="check-status">✓</span> Initializing system modules...</div>
+            <div class="boot-check" data-index="1"><span class="check-status">✓</span> Loading network interfaces...</div>
+            <div class="boot-check" data-index="2"><span class="check-status">✓</span> Starting threat detection engine...</div>
+            <div class="boot-check" data-index="3"><span class="check-status">✓</span> Establishing localhost binding...</div>
+            <div class="boot-check" data-index="4"><span class="check-status">✓</span> System ready.</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <div class="logo-icon"></div>
+                <div>
+                    <h1>Sentinel</h1>
+                    <div class="subtitle">Network Security Monitor</div>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="live-indicator">
+                    <div class="live-dot"></div>
+                    <span>LIVE</span>
+                </div>
+                <div class="timestamp" id="lastUpdate">--:--:--</div>
+            </div>
+        </header>
+
+        <!-- Error Banner -->
+        <div class="error-banner" id="errorBanner">
+            <div class="error-banner-text" id="errorText">Unable to connect to server</div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat-card">
+                <div class="stat-label">Active Connections</div>
+                <div class="stat-value accent" id="statConnections">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Open Ports</div>
+                <div class="stat-value" id="statPorts">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">CPU Usage</div>
+                <div class="stat-value" id="statCpu">--%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Memory Usage</div>
+                <div class="stat-value" id="statMemory">--%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Uptime</div>
+                <div class="stat-value" id="statUptime">--</div>
+            </div>
+        </div>
+
+        <!-- Threat Summary -->
+        <div class="threat-summary">
+            <div class="threat-item">
+                <span class="threat-badge high" id="threatHigh">0</span>
+                <span class="threat-label">High</span>
+            </div>
+            <div class="threat-item">
+                <span class="threat-badge medium" id="threatMedium">0</span>
+                <span class="threat-label">Medium</span>
+            </div>
+            <div class="threat-item">
+                <span class="threat-badge low" id="threatLow">0</span>
+                <span class="threat-label">Low</span>
+            </div>
+            <div class="threat-item">
+                <span class="threat-badge none" id="threatNone">0</span>
+                <span class="threat-label">Clear</span>
+            </div>
+        </div>
+
+        <!-- Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Active Connections -->
+            <div class="card span-8">
+                <div class="card-header">
+                    <span class="card-title">Active Connections</span>
+                    <span class="card-badge" id="connectionsCount">0</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Remote IP</th>
+                                    <th>Port</th>
+                                    <th>Process</th>
+                                    <th>PID</th>
+                                    <th>Country</th>
+                                    <th>Status</th>
+                                    <th>Threat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="connectionsTable">
+                                <tr>
+                                    <td colspan="7" class="empty-state">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Firewall Status -->
+            <div class="card span-4">
+                <div class="card-header">
+                    <span class="card-title">Firewall (UFW)</span>
+                </div>
+                <div class="card-body">
+                    <div class="firewall-status">
+                        <div class="status-indicator unknown" id="firewallStatus">
+                            <span>Unknown</span>
+                        </div>
+                    </div>
+                    <ul class="firewall-rules" id="firewallRules">
+                        <li>Loading...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Open Ports -->
+            <div class="card span-6">
+                <div class="card-header">
+                    <span class="card-title">Listening Ports</span>
+                    <span class="card-badge" id="portsCount">0</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-scroll">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Port</th>
+                                    <th>Protocol</th>
+                                    <th>Process</th>
+                                    <th>PID</th>
+                                    <th>Threat</th>
+                                </tr>
+                            </thead>
+                            <tbody id="portsTable">
+                                <tr>
+                                    <td colspan="5" class="empty-state">Loading...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Network Interfaces -->
+            <div class="card span-6">
+                <div class="card-header">
+                    <span class="card-title">Network Interfaces</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-scroll" id="interfacesList">
+                        <div class="empty-state">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Talkers -->
+            <div class="card span-3">
+                <div class="card-header">
+                    <span class="card-title">Top Talkers</span>
+                </div>
+                <div class="card-body" id="topTalkersList">
+                    <div class="empty-state">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Connection History Graph -->
+            <div class="card span-8">
+                <div class="card-header">
+                    <span class="card-title">Connection History</span>
+                </div>
+                <div class="card-body">
+                    <div class="graph-container">
+                        <canvas id="historyGraph" class="graph-canvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Info -->
+            <div class="card span-4">
+                <div class="card-header">
+                    <span class="card-title">System Information</span>
+                </div>
+                <div class="card-body">
+                    <div class="system-grid">
+                        <div class="system-item">
+                            <div class="system-label">Hostname</div>
+                            <div class="system-value" id="sysHostname">--</div>
+                        </div>
+                        <div class="system-item">
+                            <div class="system-label">Operating System</div>
+                            <div class="system-value" id="sysOS">--</div>
+                        </div>
+                        <div class="system-item">
+                            <div class="system-label">Architecture</div>
+                            <div class="system-value" id="sysArch">--</div>
+                        </div>
+                        <div class="system-item">
+                            <div class="system-label">CPU Cores</div>
+                            <div class="system-value" id="sysCores">--</div>
+                        </div>
+                    </div>
+                    
+                    <div class="usage-bar-container">
+                        <div class="usage-bar-label">
+                            <span>CPU</span>
+                            <span id="cpuPercent">0%</span>
+                        </div>
+                        <div class="usage-bar">
+                            <div class="usage-bar-fill" id="cpuBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="usage-bar-container">
+                        <div class="usage-bar-label">
+                            <span>Memory</span>
+                            <span id="memPercent">0%</span>
+                        </div>
+                        <div class="usage-bar">
+                            <div class="usage-bar-fill" id="memBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Threat Log -->
+            <div class="card span-12">
+                <div class="card-header">
+                    <span class="card-title">Threat Log</span>
+                    <span class="card-badge" id="threatLogCount">0</span>
+                </div>
+                <div class="card-body">
+                    <div class="threat-log" id="threatLogList">
+                        <div class="empty-state">No threats detected this session</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <p>Sentinel v1.0.0 — Local Network Security Monitor</p>
+            <p>Read-only. Observe. Protect.</p>
+        </footer>
+    </div>
+
+    <script>
+        // =================================================================
+        // SENTINEL DASHBOARD - FRONTEND JAVASCRIPT
+        // =================================================================
+        // Modular functions for fetching, updating, and rendering data
+        // =================================================================
+
+        (function() {
+            'use strict';
+
+            // Configuration
+            const CONFIG = {
+                refreshInterval: 5000,      // 5 seconds
+                apiEndpoint: '/api/dashboard',
+                graphPoints: 60,
+                graphHeight: 200,
+                graphPadding: { top: 20, right: 20, bottom: 30, left: 50 }
+            };
+
+            // State
+            let lastData = null;
+            let graphCanvas = null;
+            let graphCtx = null;
+            let isLoading = false;
+
+            // Country code to flag emoji mapping
+            const countryToFlag = (code) => {
+                if (!code || code === 'LOCAL') return '🏠';
+                if (code === 'XX') return '🌐';
+                const codePoints = code
+                    .toUpperCase()
+                    .split('')
+                    .map(char => 127397 + char.charCodeAt(0));
+                return String.fromCodePoint(...codePoints);
+            };
+
+            // =================================================================
+            // DATA FETCHING
+            // =================================================================
+
+            /**
+             * Fetch dashboard data from the API
+             * @returns {Promise<Object>} Dashboard data
+             */
+            async function fetchDashboardData() {
+                try {
+                    const response = await fetch(CONFIG.apiEndpoint);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    console.error('Failed to fetch dashboard data:', error);
+                    throw error;
+                }
+            }
+
+            // =================================================================
+            // UI UPDATE FUNCTIONS
+            // =================================================================
+
+            /**
+             * Update the timestamp display
+             * @param {string} timestamp - ISO timestamp
+             */
+            function updateTimestamp(timestamp) {
+                const date = new Date(timestamp);
+                const timeStr = date.toLocaleTimeString('en-US', { hour12: false });
+                document.getElementById('lastUpdate').textContent = timeStr;
+            }
+
+            /**
+             * Update the stats bar
+             * @param {Object} data - Dashboard data
+             */
+            function updateStats(data) {
+                document.getElementById('statConnections').textContent = data.connections.length;
+                document.getElementById('statPorts').textContent = data.listening_ports.length;
+                document.getElementById('statCpu').textContent = `${data.system.cpu_percent.toFixed(1)}%`;
+                document.getElementById('statMemory').textContent = `${data.system.memory_percent.toFixed(1)}%`;
+                document.getElementById('statUptime').textContent = data.system.uptime_formatted;
+            }
+
+            /**
+             * Update threat summary badges
+             * Flash the HIGH badge when count increases
+             * @param {Object} threatSummary - Threat count object
+             */
+            let previousHighCount = 0;
+            function updateThreatSummary(threatSummary) {
+                const highBadge = document.getElementById('threatHigh');
+                const newHighCount = threatSummary.high || 0;
+                
+                // Flash if high threats increased
+                if (newHighCount > previousHighCount && previousHighCount !== 0) {
+                    highBadge.classList.remove('flash');
+                    // Trigger reflow to restart animation
+                    void highBadge.offsetWidth;
+                    highBadge.classList.add('flash');
+                    
+                    // Remove flash class after animation completes
+                    setTimeout(() => {
+                        highBadge.classList.remove('flash');
+                    }, 1000);
+                }
+                previousHighCount = newHighCount;
+                
+                highBadge.textContent = newHighCount;
+                document.getElementById('threatMedium').textContent = threatSummary.medium || 0;
+                document.getElementById('threatLow').textContent = threatSummary.low || 0;
+                document.getElementById('threatNone').textContent = threatSummary.none || 0;
+            }
+
+            /**
+             * Update the connections table
+             * @param {Array} connections - List of connection objects
+             */
+            function updateConnectionsTable(connections) {
+                const tbody = document.getElementById('connectionsTable');
+                const countBadge = document.getElementById('connectionsCount');
+                
+                countBadge.textContent = connections.length;
+                
+                if (connections.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" class="empty-state">
+                                <div class="empty-state-icon">🔒</div>
+                                <div>No active connections</div>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                // Sort by threat level (high first)
+                const sorted = [...connections].sort((a, b) => {
+                    const order = { high: 0, medium: 1, low: 2, none: 3 };
+                    return order[a.threat_level] - order[b.threat_level];
+                });
+
+                tbody.innerHTML = sorted.map(conn => {
+                    const flag = countryToFlag(conn.country_code);
+                    const countryDisplay = conn.country_code ? 
+                        `<div class="country-info">
+                            <span class="flag">${flag}</span>
+                            <span class="country-code">${conn.country_code}</span>
+                            ${conn.country_name && conn.country_code !== 'LOCAL' ? `<span class="country-name">${escapeHtml(conn.country_name)}</span>` : ''}
+                        </div>` : 
+                        '<span class="country-code">—</span>';
+                    
+                    // Build tooltip from threats array
+                    const tooltipText = conn.threats && conn.threats.length > 0 
+                        ? conn.threats.join(' • ') 
+                        : '';
+                    
+                    const threatDisplay = conn.threat_level !== 'none' ?
+                        `<span class="threat-indicator ${conn.threat_level}" ${tooltipText ? `data-tooltip="${escapeHtml(tooltipText)}"` : ''}>${conn.threat_level}</span>` :
+                        '<span class="threat-indicator none">clear</span>';
+                    
+                    return `
+                        <tr class="fade-in">
+                            <td>${escapeHtml(conn.remote_ip)}</td>
+                            <td>${conn.remote_port}</td>
+                            <td>${escapeHtml(conn.process_name)}</td>
+                            <td>${conn.pid || '—'}</td>
+                            <td>${countryDisplay}</td>
+                            <td>${conn.status}</td>
+                            <td>${threatDisplay}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            /**
+             * Update the listening ports table
+             * @param {Array} ports - List of port objects
+             */
+            function updatePortsTable(ports) {
+                const tbody = document.getElementById('portsTable');
+                const countBadge = document.getElementById('portsCount');
+                
+                countBadge.textContent = ports.length;
+                
+                if (ports.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="empty-state">
+                                <div class="empty-state-icon">🔌</div>
+                                <div>No listening ports</div>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                tbody.innerHTML = ports.map(port => {
+                    // Build tooltip from threats array
+                    const tooltipText = port.threats && port.threats.length > 0 
+                        ? port.threats.join(' • ') 
+                        : '';
+                    
+                    const threatDisplay = port.threat_level !== 'none' ?
+                        `<span class="threat-indicator ${port.threat_level}" ${tooltipText ? `data-tooltip="${escapeHtml(tooltipText)}"` : ''}>${port.threat_level}</span>` :
+                        '<span class="threat-indicator none">clear</span>';
+                    
+                    return `
+                        <tr class="fade-in">
+                            <td>${port.port}</td>
+                            <td>${port.protocol}</td>
+                            <td>${escapeHtml(port.process_name)}</td>
+                            <td>${port.pid || '—'}</td>
+                            <td>${threatDisplay}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            /**
+             * Update firewall status display
+             * @param {Object} ufw - UFW status object
+             */
+            function updateFirewallStatus(ufw) {
+                const statusEl = document.getElementById('firewallStatus');
+                const rulesEl = document.getElementById('firewallRules');
+                
+                if (ufw.error) {
+                    statusEl.className = 'status-indicator unknown';
+                    statusEl.innerHTML = `<span>Unavailable</span>`;
+                    
+                    // Show error and optional help text
+                    let helpHtml = `<li>${escapeHtml(ufw.error)}</li>`;
+                    if (ufw.help) {
+                        helpHtml += `<li style="font-size: 0.65rem; color: var(--text-dim); margin-top: 0.5rem;">${escapeHtml(ufw.help)}</li>`;
+                    }
+                    rulesEl.innerHTML = helpHtml;
+                    return;
+                }
+                
+                if (ufw.active) {
+                    statusEl.className = 'status-indicator active';
+                    statusEl.innerHTML = '<span>Active</span>';
+                } else {
+                    statusEl.className = 'status-indicator inactive';
+                    statusEl.innerHTML = '<span>Inactive</span>';
+                }
+                
+                if (ufw.rules && ufw.rules.length > 0) {
+                    rulesEl.innerHTML = ufw.rules.map(rule => 
+                        `<li>${escapeHtml(rule)}</li>`
+                    ).join('');
+                } else {
+                    rulesEl.innerHTML = '<li>No rules configured</li>';
+                }
+            }
+
+            /**
+             * Update network interfaces list
+             * @param {Array} interfaces - List of interface objects
+             * @param {Object} sparklines - Sparkline data per interface
+             */
+            function updateInterfaces(interfaces, sparklines = {}) {
+                const container = document.getElementById('interfacesList');
+                
+                if (interfaces.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🌐</div>
+                            <div>No network interfaces</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = interfaces.map(iface => {
+                    const ipv4 = iface.addresses.filter(a => a.family === 'IPv4');
+                    const ips = ipv4.map(a => a.ip).join(', ') || 'No IPv4';
+                    
+                    // Generate sparkline SVG
+                    const sparklineData = sparklines[iface.name] || [];
+                    const sparklineSvg = generateSparkline(sparklineData);
+                    
+                    return `
+                        <div class="interface-item">
+                            <div class="interface-info">
+                                <div class="interface-name">
+                                    <span class="interface-status ${iface.is_up ? 'up' : 'down'}"></span>
+                                    ${escapeHtml(iface.name)}
+                                </div>
+                                <div class="interface-ips">${escapeHtml(ips)}</div>
+                            </div>
+                            <div class="interface-stats">
+                                <div class="stat-rx">↓ ${iface.bytes_recv_formatted}</div>
+                                <div class="stat-tx">↑ ${iface.bytes_sent_formatted}</div>
+                            </div>
+                            ${sparklineSvg}
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            /**
+             * Generate an SVG sparkline from data points
+             * @param {Array} data - Array of numeric values
+             * @returns {string} SVG markup
+             */
+            function generateSparkline(data) {
+                if (!data || data.length < 2) {
+                    return '<div class="sparkline"></div>';
+                }
+                
+                const width = 60;
+                const height = 20;
+                const padding = 2;
+                
+                const max = Math.max(...data, 1);
+                const min = 0;
+                const range = max - min || 1;
+                
+                const points = data.map((val, i) => {
+                    const x = padding + (i / (data.length - 1)) * (width - 2 * padding);
+                    const y = height - padding - ((val - min) / range) * (height - 2 * padding);
+                    return `${x},${y}`;
+                });
+                
+                const pathD = `M ${points.join(' L ')}`;
+                const areaD = `M ${padding},${height - padding} L ${points.join(' L ')} L ${width - padding},${height - padding} Z`;
+                
+                return `
+                    <svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+                        <path class="sparkline-area" d="${areaD}" />
+                        <path class="sparkline-path" d="${pathD}" />
+                    </svg>
+                `;
+            }
+
+            /**
+             * Update top talkers list
+             * @param {Array} topTalkers - List of top process objects
+             */
+            function updateTopTalkers(topTalkers) {
+                const container = document.getElementById('topTalkersList');
+                
+                if (!topTalkers || topTalkers.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📊</div>
+                            <div>No active processes</div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = topTalkers.map((proc, index) => `
+                    <div class="top-talker-item">
+                        <span class="top-talker-rank">${index + 1}</span>
+                        <div class="top-talker-info">
+                            <div class="top-talker-name">${escapeHtml(proc.name)}</div>
+                            <div class="top-talker-pid">PID: ${proc.pid}</div>
+                        </div>
+                        <div class="top-talker-connections">${proc.connections}</div>
+                    </div>
+                `).join('');
+            }
+
+            /**
+             * Update threat log
+             * @param {Array} threatLog - List of threat log entries
+             */
+            function updateThreatLog(threatLog) {
+                const container = document.getElementById('threatLogList');
+                const countBadge = document.getElementById('threatLogCount');
+                
+                countBadge.textContent = threatLog ? threatLog.length : 0;
+                
+                if (!threatLog || threatLog.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">✓</div>
+                            <div>No threats detected this session</div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = threatLog.map(entry => `
+                    <div class="threat-log-item">
+                        <span class="threat-log-time">${entry.time_display}</span>
+                        <span class="threat-log-level ${entry.threat_level}"></span>
+                        <div class="threat-log-content">
+                            <div class="threat-log-ip">${escapeHtml(entry.ip)}</div>
+                            <div class="threat-log-reason">${escapeHtml(entry.reasons.join(' • '))}</div>
+                            <div class="threat-log-process">Process: ${escapeHtml(entry.process)}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            /**
+             * Update system information panel
+             * @param {Object} system - System info object
+             */
+            function updateSystemInfo(system) {
+                document.getElementById('sysHostname').textContent = system.hostname;
+                document.getElementById('sysOS').textContent = system.os;
+                document.getElementById('sysArch').textContent = system.architecture;
+                document.getElementById('sysCores').textContent = system.cpu_count;
+                
+                // Update CPU bar
+                const cpuPercent = system.cpu_percent;
+                document.getElementById('cpuPercent').textContent = `${cpuPercent.toFixed(1)}%`;
+                const cpuBar = document.getElementById('cpuBar');
+                cpuBar.style.width = `${cpuPercent}%`;
+                cpuBar.className = 'usage-bar-fill' + 
+                    (cpuPercent > 90 ? ' danger' : cpuPercent > 70 ? ' warning' : '');
+                
+                // Update memory bar
+                const memPercent = system.memory_percent;
+                document.getElementById('memPercent').textContent = `${memPercent.toFixed(1)}%`;
+                const memBar = document.getElementById('memBar');
+                memBar.style.width = `${memPercent}%`;
+                memBar.className = 'usage-bar-fill' + 
+                    (memPercent > 90 ? ' danger' : memPercent > 70 ? ' warning' : '');
+            }
+
+            // =================================================================
+            // GRAPH RENDERING
+            // =================================================================
+
+            /**
+             * Initialize the graph canvas
+             */
+            function initGraph() {
+                graphCanvas = document.getElementById('historyGraph');
+                graphCtx = graphCanvas.getContext('2d');
+                resizeGraph();
+                window.addEventListener('resize', resizeGraph);
+            }
+
+            /**
+             * Resize graph canvas to match container
+             */
+            function resizeGraph() {
+                const container = graphCanvas.parentElement;
+                const rect = container.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                
+                graphCanvas.width = rect.width * dpr;
+                graphCanvas.height = rect.height * dpr;
+                graphCanvas.style.width = rect.width + 'px';
+                graphCanvas.style.height = rect.height + 'px';
+                
+                graphCtx.scale(dpr, dpr);
+                
+                if (lastData) {
+                    renderGraph(lastData.history);
+                }
+            }
+
+            /**
+             * Render the connection history graph
+             * @param {Array} history - Array of {timestamp, count} objects
+             */
+            function renderGraph(history) {
+                if (!graphCtx || !history || history.length === 0) return;
+                
+                const width = graphCanvas.width / (window.devicePixelRatio || 1);
+                const height = graphCanvas.height / (window.devicePixelRatio || 1);
+                const padding = CONFIG.graphPadding;
+                
+                // Clear canvas
+                graphCtx.clearRect(0, 0, width, height);
+                
+                // Calculate dimensions
+                const graphWidth = width - padding.left - padding.right;
+                const graphHeight = height - padding.top - padding.bottom;
+                
+                // Get data range
+                const counts = history.map(h => h.count);
+                const maxCount = Math.max(...counts, 10); // Minimum scale of 10
+                const minCount = 0;
+                
+                // Draw grid lines
+                graphCtx.strokeStyle = 'rgba(0, 212, 255, 0.1)';
+                graphCtx.lineWidth = 1;
+                
+                const gridLines = 5;
+                for (let i = 0; i <= gridLines; i++) {
+                    const y = padding.top + (graphHeight / gridLines) * i;
+                    graphCtx.beginPath();
+                    graphCtx.moveTo(padding.left, y);
+                    graphCtx.lineTo(width - padding.right, y);
+                    graphCtx.stroke();
+                    
+                    // Y-axis labels
+                    const value = Math.round(maxCount - (maxCount / gridLines) * i);
+                    graphCtx.fillStyle = '#555';
+                    graphCtx.font = '10px monospace';
+                    graphCtx.textAlign = 'right';
+                    graphCtx.fillText(value.toString(), padding.left - 8, y + 4);
+                }
+                
+                // Draw axes
+                graphCtx.strokeStyle = 'rgba(0, 212, 255, 0.3)';
+                graphCtx.lineWidth = 1;
+                graphCtx.beginPath();
+                graphCtx.moveTo(padding.left, padding.top);
+                graphCtx.lineTo(padding.left, height - padding.bottom);
+                graphCtx.lineTo(width - padding.right, height - padding.bottom);
+                graphCtx.stroke();
+                
+                if (history.length < 2) return;
+                
+                // Calculate points
+                const points = history.map((h, i) => ({
+                    x: padding.left + (i / (CONFIG.graphPoints - 1)) * graphWidth,
+                    y: padding.top + graphHeight - ((h.count - minCount) / (maxCount - minCount)) * graphHeight
+                }));
+                
+                // Draw gradient fill
+                const gradient = graphCtx.createLinearGradient(0, padding.top, 0, height - padding.bottom);
+                gradient.addColorStop(0, 'rgba(0, 212, 255, 0.3)');
+                gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
+                
+                graphCtx.fillStyle = gradient;
+                graphCtx.beginPath();
+                graphCtx.moveTo(points[0].x, height - padding.bottom);
+                points.forEach(p => graphCtx.lineTo(p.x, p.y));
+                graphCtx.lineTo(points[points.length - 1].x, height - padding.bottom);
+                graphCtx.closePath();
+                graphCtx.fill();
+                
+                // Draw line
+                graphCtx.strokeStyle = '#00d4ff';
+                graphCtx.lineWidth = 2;
+                graphCtx.lineCap = 'round';
+                graphCtx.shadowColor = '#00d4ff';
+                graphCtx.shadowBlur = 10;
+                
+                graphCtx.beginPath();
+                points.forEach((p, i) => {
+                    if (i === 0) graphCtx.moveTo(p.x, p.y);
+                    else graphCtx.lineTo(p.x, p.y);
+                });
+                graphCtx.stroke();
+                
+                // Reset shadow
+                graphCtx.shadowBlur = 0;
+                
+                // Draw points
+                graphCtx.fillStyle = '#00d4ff';
+                points.forEach((p, i) => {
+                    if (i === points.length - 1 || i % 5 === 0) {
+                        graphCtx.beginPath();
+                        graphCtx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                        graphCtx.fill();
+                    }
+                });
+                
+                // Draw time labels
+                graphCtx.fillStyle = '#555';
+                graphCtx.font = '9px monospace';
+                graphCtx.textAlign = 'center';
+                
+                const labelCount = Math.min(6, history.length);
+                const labelStep = Math.floor(history.length / labelCount);
+                
+                for (let i = 0; i < history.length; i += labelStep) {
+                    if (history[i] && history[i].time_display) {
+                        const x = padding.left + (i / (CONFIG.graphPoints - 1)) * graphWidth;
+                        graphCtx.fillText(history[i].time_display, x, height - 8);
+                    }
+                }
+            }
+
+            // =================================================================
+            // ERROR HANDLING
+            // =================================================================
+
+            /**
+             * Show error banner
+             * @param {string} message - Error message
+             */
+            function showError(message) {
+                const banner = document.getElementById('errorBanner');
+                const text = document.getElementById('errorText');
+                text.textContent = message;
+                banner.classList.add('visible');
+            }
+
+            /**
+             * Hide error banner
+             */
+            function hideError() {
+                document.getElementById('errorBanner').classList.remove('visible');
+            }
+
+            // =================================================================
+            // UTILITY FUNCTIONS
+            // =================================================================
+
+            /**
+             * Escape HTML to prevent XSS
+             * @param {string} str - String to escape
+             * @returns {string} Escaped string
+             */
+            function escapeHtml(str) {
+                if (!str) return '';
+                const div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+
+            // =================================================================
+            // MAIN UPDATE LOOP
+            // =================================================================
+
+            /**
+             * Main function to update all dashboard components
+             */
+            async function updateDashboard() {
+                if (isLoading) return;
+                isLoading = true;
+                
+                try {
+                    const data = await fetchDashboardData();
+                    lastData = data;
+                    
+                    hideError();
+                    
+                    // Update all components
+                    updateTimestamp(data.timestamp);
+                    updateStats(data);
+                    updateThreatSummary(data.threat_summary);
+                    updateConnectionsTable(data.connections);
+                    updatePortsTable(data.listening_ports);
+                    updateFirewallStatus(data.ufw_status);
+                    updateInterfaces(data.interfaces, data.sparklines || {});
+                    updateSystemInfo(data.system);
+                    renderGraph(data.history);
+                    updateTopTalkers(data.top_talkers || []);
+                    updateThreatLog(data.threat_log || []);
+                    
+                } catch (error) {
+                    showError(`Connection error: ${error.message}`);
+                } finally {
+                    isLoading = false;
+                }
+            }
+
+            // =================================================================
+            // INITIALIZATION
+            // =================================================================
+
+            /**
+             * Initialize the dashboard
+             */
+            function init() {
+                // Check if boot sequence has been shown this session
+                const bootShown = sessionStorage.getItem('sentinel-boot-shown');
+                
+                if (!bootShown) {
+                    runBootSequence().then(() => {
+                        sessionStorage.setItem('sentinel-boot-shown', 'true');
+                        initGraph();
+                        animateCards();
+                        updateDashboard();
+                        setInterval(updateDashboard, CONFIG.refreshInterval);
+                    });
+                } else {
+                    // Skip boot, show immediately
+                    document.getElementById('bootOverlay').classList.add('hidden');
+                    document.querySelectorAll('.card, .stat-card, .threat-summary').forEach(el => {
+                        el.classList.add('visible');
+                    });
+                    initGraph();
+                    updateDashboard();
+                    setInterval(updateDashboard, CONFIG.refreshInterval);
+                }
+            }
+
+            /**
+             * Run the boot sequence animation
+             */
+            async function runBootSequence() {
+                const bootTitle = document.getElementById('bootTitle');
+                const bootOverlay = document.getElementById('bootOverlay');
+                const checks = document.querySelectorAll('.boot-check');
+                const title = 'SENTINEL';
+                
+                // Typewriter effect for title
+                for (let i = 0; i < title.length; i++) {
+                    bootTitle.textContent = title.substring(0, i + 1);
+                    await sleep(80);
+                }
+                
+                // Add cursor after typing
+                const cursor = document.createElement('span');
+                cursor.className = 'typewriter-cursor';
+                bootTitle.appendChild(cursor);
+                
+                await sleep(300);
+                
+                // Animate boot checks
+                for (let i = 0; i < checks.length; i++) {
+                    checks[i].classList.add('visible');
+                    await sleep(250);
+                }
+                
+                await sleep(500);
+                
+                // Hide boot overlay
+                bootOverlay.classList.add('hidden');
+                
+                await sleep(500);
+            }
+
+            /**
+             * Animate cards with staggered entrance
+             */
+            function animateCards() {
+                const elements = document.querySelectorAll('.stat-card, .threat-summary, .card');
+                elements.forEach((el, index) => {
+                    setTimeout(() => {
+                        el.classList.add('visible');
+                    }, index * 100);
+                });
+            }
+
+            /**
+             * Sleep utility for animations
+             */
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            // Start when DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
+            } else {
+                init();
+            }
+        })();
+    </script>
+</body>
+</html>
